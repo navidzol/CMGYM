@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "FitFlow",
+    "slug": "fitflow",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#0D0D1A"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.fitflow.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0D0D1A"
+      },
+      "package": "app.fitflow.mobile"
+    },
+    "scheme": "fitflow",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ]
+  }
+}
