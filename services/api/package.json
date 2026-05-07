@@ -1,5 +1,5 @@
 {
-  "name": "@fitflow/api",
+  "name": "@cmgym/api",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "db:migrate": "node dist/db/migrate.js"
   },
   "dependencies": {
-    "@fitflow/core": "*",
+    "@cmgym/core": "*",
     "@fastify/cors": "^9.0.0",
     "@fastify/helmet": "^11.0.0",
     "@fastify/rate-limit": "^9.0.0",

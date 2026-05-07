@@ -1,5 +1,5 @@
 import { query } from '../db.js';
-import { generateWeekSchedule } from '@fitflow/core';
+import { generateWeekSchedule, type PoolExercise } from '@cmgym/core';
 
 /**
  * SOP 6.5: Auto-generate next week's sessions for all active programmes.
@@ -38,7 +38,7 @@ export async function generateWeeklySchedules(): Promise<void> {
       sessionDurationMin: prog.session_duration_min,
       cardioDurationMin: prog.cardio_duration_min,
       restBetweenSetsS: prog.rest_between_sets_s ?? 90,
-      exercisePools: pools.rows,
+      exercisePools: pools.rows as unknown as PoolExercise[],
     });
 
     // Get latest week number

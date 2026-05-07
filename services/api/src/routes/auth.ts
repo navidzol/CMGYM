@@ -5,13 +5,13 @@ import { query } from '../db/index.js';
 import { config } from '../config.js';
 
 const registerSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().email(),
   password: z.string().min(8),
-  display_name: z.string().min(1).max(100),
+  display_name: z.string().trim().min(1).max(100),
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().email(),
   password: z.string(),
 });
 
@@ -25,16 +25,16 @@ function signJWT(payload: { sub: string; email: string }): string {
   return `${header}.${body}.${signature}`;
 }
 
-async function hashPassword(password: string): Promise<string> {
+function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');
   const hash = createHmac('sha256', salt).update(password).digest('hex');
   return `${salt}:${hash}`;
 }
 
-async function verifyPassword(password: string, stored: string): Promise<boolean> {
+function verifyPassword(password: string, stored: string): boolean {
   const [salt, hash] = stored.split(':');
   const candidate = createHmac('sha256', salt).update(password).digest('hex');
-  return timingSafeEqual(Buffer.from(hash), Buffer.from(candidate));
+  return timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(candidate, 'hex'));
 }
 
 export async function authRoutes(app: FastifyInstance) {
@@ -47,16 +47,12 @@ export async function authRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Email already registered' });
     }
 
-    const passwordHash = await hashPassword(body.password);
+    const passwordHash = hashPassword(body.password);
     const result = await query(
-      `INSERT INTO users (email, display_name) VALUES ($1, $2) RETURNING id, email, display_name`,
-      [body.email, body.display_name]
+      `INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3) RETURNING id, email, display_name`,
+      [body.email, passwordHash, body.display_name]
     );
     const user = result.rows[0];
-
-    // Store password hash (in practice, use Supabase Auth — this is a fallback)
-    // For self-hosted, we keep a password column or a separate auth table
-    // TODO: add password_hash column or use Supabase Auth
 
     // Create default settings
     await query('INSERT INTO user_settings (user_id) VALUES ($1)', [user.id]);
@@ -71,9 +67,8 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/login', async (request, reply) => {
     const body = loginSchema.parse(request.body);
 
-    // TODO: verify password against stored hash
     const result = await query(
-      'SELECT id, email, display_name FROM users WHERE email = $1',
+      'SELECT id, email, display_name, password_hash FROM users WHERE email = $1',
       [body.email]
     );
     if (result.rows.length === 0) {
@@ -81,18 +76,22 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const user = result.rows[0];
+    if (!verifyPassword(body.password, user.password_hash)) {
+      return reply.status(401).send({ error: 'Invalid credentials' });
+    }
+
     const token = signJWT({ sub: user.id, email: user.email });
-    return reply.send({ data: { user, token } });
+    return reply.send({
+      data: { user: { id: user.id, email: user.email, display_name: user.display_name }, token },
+    });
   });
 
   // POST /auth/refresh
   app.post('/refresh', async (request, reply) => {
-    // Re-issue token from existing valid token
     const authHeader = request.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
       return reply.status(401).send({ error: 'Missing token' });
     }
-    // Decode without full verification to get sub, then re-sign
     const payload = JSON.parse(
       Buffer.from(authHeader.slice(7).split('.')[1], 'base64url').toString()
     );

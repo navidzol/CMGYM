@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "FitFlow",
-    "slug": "fitflow",
+    "name": "CMGYM",
+    "slug": "cmgym",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -12,15 +12,15 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.fitflow.mobile"
+      "bundleIdentifier": "app.cmgym.mobile"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0D0D1A"
       },
-      "package": "app.fitflow.mobile"
+      "package": "app.cmgym.mobile"
     },
-    "scheme": "fitflow",
+    "scheme": "cmgym",
     "plugins": [
       "expo-router",
       "expo-secure-store"

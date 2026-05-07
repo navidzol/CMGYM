@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { query } from '../db/index.js';
 import { authenticate } from '../middleware/auth.js';
-import { generateWeekSchedule } from '@fitflow/core';
+import { generateWeekSchedule, type PoolExercise } from '@cmgym/core';
 
 const createProgrammeSchema = z.object({
   weeks: z.number().int().min(1).max(52).default(1),
@@ -90,7 +90,7 @@ export async function programmeRoutes(app: FastifyInstance) {
       sessionDurationMin: programme.session_duration_min,
       cardioDurationMin: programme.cardio_duration_min,
       restBetweenSetsS: settings.rows[0]?.rest_between_sets_s ?? 90,
-      exercisePools: pools.rows,
+      exercisePools: pools.rows as unknown as PoolExercise[],
     });
 
     // Insert generated sessions

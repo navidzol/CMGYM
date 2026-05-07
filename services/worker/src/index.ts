@@ -4,7 +4,7 @@ import { generateWeeklySchedules } from './jobs/generate-schedules.js';
 import { computeReports } from './jobs/compute-reports.js';
 import { computeLeaderboards } from './jobs/compute-leaderboards.js';
 
-console.log('[Worker] FitFlow cron worker starting...');
+console.log('[Worker] APP cron worker starting...');
 
 // SOP 6.5: Generate new week on Sunday night at 23:00
 cron.schedule('0 23 * * 0', async () => {

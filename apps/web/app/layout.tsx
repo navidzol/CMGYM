@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import './globals.css';
+import Nav from '../components/Nav';
 
 export const metadata: Metadata = {
-  title: 'FitFlow — Workout Planner & Tracker',
+  title: 'CMGYM — Workout Planner & Tracker',
   description: 'Auto-generated workout sessions, family training, and progress tracking.',
 };
 
@@ -12,7 +14,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, backgroundColor: '#0D0D1A', color: '#fff', fontFamily: 'Inter, sans-serif' }}>
+      <body>
+        <Nav />
         {children}
       </body>
     </html>

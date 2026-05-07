@@ -1,5 +1,5 @@
 // ══════════════════════════════════════
-// FitFlow Core Types
+// CMGYM Core Types
 // ══════════════════════════════════════
 
 export type MuscleFamily = 'F1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6';

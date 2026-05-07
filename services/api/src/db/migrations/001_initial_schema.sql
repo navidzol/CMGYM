@@ -1,4 +1,4 @@
--- FitFlow Initial Schema
+-- CMGYM Initial Schema
 -- Implements SOP v2.0 Section 4: Database Schema
 
 -- Enable UUID generation
@@ -10,6 +10,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
   display_name TEXT NOT NULL,
   avatar_url TEXT,
   unit_pref TEXT NOT NULL DEFAULT 'kg' CHECK (unit_pref IN ('kg', 'lb')),

@@ -1,8 +1,10 @@
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'CMGYM';
+
 export default function Home() {
   return (
     <main style={{ padding: '2rem', maxWidth: '600px', margin: '0 auto' }}>
       <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>
-        <span style={{ color: '#5B4FE8' }}>FitFlow</span>
+        <span style={{ color: '#5B4FE8' }}>{APP_NAME}</span>
       </h1>
       <p style={{ color: '#6B6B8A', marginTop: '0.5rem' }}>
         Workout Planner, Tracker & Family Training

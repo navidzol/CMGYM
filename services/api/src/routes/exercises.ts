@@ -12,10 +12,20 @@ const searchSchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
+// Map our muscle family codes to ExerciseDB targetMuscles values
+const FAMILY_TO_MUSCLES: Record<string, string[]> = {
+  F1: ['pectorals', 'delts', 'biceps'],
+  F2: ['lats', 'traps', 'upper back'],
+  F3: ['abs', 'obliques'],
+  F4: ['spine', 'glutes'],
+  F5: ['quads', 'hip flexors'],
+  F6: ['hamstrings', 'glutes', 'calves'],
+};
+
 export async function exerciseRoutes(app: FastifyInstance) {
   app.addHook('onRequest', authenticate);
 
-  // GET /exercises — cached ExerciseDB proxy
+  // GET /exercises — search local cached exercises
   app.get('/', async (request) => {
     const params = searchSchema.parse(request.query);
     const offset = (params.page - 1) * params.limit;
@@ -78,49 +88,123 @@ export async function exerciseRoutes(app: FastifyInstance) {
     return { data: result.rows[0] };
   });
 
-  // POST /exercises/fetch-external — fetch from ExerciseDB and cache
+  // POST /exercises/fetch-external — fetch from ExerciseDB (AscendAPI) and cache
+  // No API key needed. Free tier at https://oss.exercisedb.dev/api/v1
   app.post('/fetch-external', async (request, reply) => {
-    if (!config.EXERCISEDB_API_KEY) {
-      return reply.status(503).send({ error: 'ExerciseDB API key not configured' });
-    }
-
-    const { name } = z.object({ name: z.string() }).parse(request.body);
+    const body = z.object({
+      name: z.string().optional(),
+      muscle: z.string().optional(),
+      limit: z.number().int().min(1).max(50).default(20),
+    }).refine(d => d.name || d.muscle, { message: 'Provide name or muscle' })
+      .parse(request.body);
 
     // Check cache first
-    const cached = await query(
-      `SELECT * FROM exercises WHERE name ILIKE $1 AND cached_at > now() - interval '${config.EXERCISEDB_CACHE_TTL_DAYS} days'`,
-      [`%${name}%`]
-    );
-    if (cached.rows.length > 0) {
-      return { data: cached.rows, source: 'cache' };
+    if (body.name) {
+      const cached = await query(
+        `SELECT * FROM exercises WHERE name ILIKE $1 AND cached_at > now() - interval '${config.EXERCISEDB_CACHE_TTL_DAYS} days'`,
+        [`%${body.name}%`]
+      );
+      if (cached.rows.length > 0) {
+        return { data: cached.rows, source: 'cache' };
+      }
     }
 
-    // Fetch from ExerciseDB
+    // Build ExerciseDB request URL
+    const params = new URLSearchParams();
+    if (body.name) params.set('name', body.name);
+    if (body.muscle) params.set('targetMuscles', body.muscle);
+    params.set('limit', String(body.limit));
+
     const res = await fetch(
-      `https://${config.EXERCISEDB_API_HOST}/exercises/name/${encodeURIComponent(name)}`,
-      {
-        headers: {
-          'X-RapidAPI-Key': config.EXERCISEDB_API_KEY,
-          'X-RapidAPI-Host': config.EXERCISEDB_API_HOST,
-        },
-      }
+      `${config.EXERCISEDB_BASE_URL}/exercises?${params.toString()}`
     );
 
     if (!res.ok) {
-      return reply.status(502).send({ error: 'ExerciseDB request failed' });
+      return reply.status(502).send({ error: `ExerciseDB request failed: ${res.status}` });
     }
 
-    const exercises = await res.json();
-    // Cache results — insert or update
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const json: any = await res.json();
+    const exercises: any[] = json.data || [];
+
+    // Cache results in our DB
     for (const ex of exercises) {
+      // Try to match to our muscle family based on targetMuscles
+      let familyCode: string | null = null;
+      for (const [code, muscles] of Object.entries(FAMILY_TO_MUSCLES)) {
+        if (ex.targetMuscles?.some((m: string) => muscles.includes(m.toLowerCase()))) {
+          familyCode = code;
+          break;
+        }
+      }
+
+      const familyId = familyCode
+        ? (await query('SELECT id FROM muscle_families WHERE code = $1', [familyCode])).rows[0]?.id
+        : null;
+
       await query(
-        `INSERT INTO exercises (name, external_id, gif_url, instructions_json, type, cached_at)
-         VALUES ($1, $2, $3, $4, 'strength', now())
-         ON CONFLICT (external_id) DO UPDATE SET cached_at = now()`,
-        [ex.name, ex.id, ex.gifUrl, JSON.stringify(ex.instructions || [])]
+        `INSERT INTO exercises (name, external_id, muscle_family_id, gif_url, instructions_json, type, cached_at)
+         VALUES ($1, $2, $3, $4, $5, 'strength', now())
+         ON CONFLICT (external_id) DO UPDATE SET
+           name = EXCLUDED.name,
+           gif_url = EXCLUDED.gif_url,
+           instructions_json = EXCLUDED.instructions_json,
+           cached_at = now()`,
+        [
+          ex.name,
+          ex.exerciseId,
+          familyId,
+          ex.gifUrl,
+          JSON.stringify(ex.instructions || []),
+        ]
       );
     }
 
     return { data: exercises, source: 'exercisedb' };
+  });
+
+  // POST /exercises/seed — bulk-fetch all exercises from ExerciseDB by muscle group
+  // Useful for initial DB population. Fetches all families.
+  app.post('/seed', async (request, reply) => {
+    const allMuscles = [...new Set(Object.values(FAMILY_TO_MUSCLES).flat())];
+    let totalCached = 0;
+
+    for (const muscle of allMuscles) {
+      const params = new URLSearchParams({ targetMuscles: muscle, limit: '100' });
+      const res = await fetch(`${config.EXERCISEDB_BASE_URL}/exercises?${params.toString()}`);
+      if (!res.ok) continue;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const json: any = await res.json();
+      const exercises: any[] = json.data || [];
+
+      // Find which family this muscle belongs to
+      let familyCode: string | null = null;
+      for (const [code, muscles] of Object.entries(FAMILY_TO_MUSCLES)) {
+        if (muscles.includes(muscle)) {
+          familyCode = code;
+          break;
+        }
+      }
+
+      const familyId = familyCode
+        ? (await query('SELECT id FROM muscle_families WHERE code = $1', [familyCode])).rows[0]?.id
+        : null;
+
+      for (const ex of exercises) {
+        await query(
+          `INSERT INTO exercises (name, external_id, muscle_family_id, gif_url, instructions_json, type, cached_at)
+           VALUES ($1, $2, $3, $4, $5, 'strength', now())
+           ON CONFLICT (external_id) DO UPDATE SET
+             name = EXCLUDED.name,
+             gif_url = EXCLUDED.gif_url,
+             cached_at = now()`,
+          [ex.name, ex.exerciseId, familyId, ex.gifUrl, JSON.stringify(ex.instructions || [])]
+        );
+        totalCached++;
+      }
+    }
+
+    return reply.status(201).send({ data: { exercises_cached: totalCached } });
   });
 }

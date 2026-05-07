@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import { ZodError } from 'zod';
 import { config } from './config.js';
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
@@ -31,6 +32,16 @@ await app.register(cors, {
 await app.register(rateLimit, {
   max: 300,
   timeWindow: '1 minute',
+});
+
+// Global error handler — turn Zod validation errors into 400s
+app.setErrorHandler((error, _request, reply) => {
+  if (error instanceof ZodError) {
+    const messages = error.issues.map(i => `${i.path.join('.')}: ${i.message}`);
+    return reply.status(400).send({ error: messages.join(', '), details: error.issues });
+  }
+  app.log.error(error);
+  return reply.status(error.statusCode ?? 500).send({ error: error.message });
 });
 
 // Health check
@@ -72,7 +83,7 @@ await app.register(
 // Start
 try {
   await app.listen({ host: config.API_HOST, port: config.API_PORT });
-  app.log.info(`FitFlow API running at http://${config.API_HOST}:${config.API_PORT}`);
+  app.log.info(`${config.APP_NAME} API running at http://${config.API_HOST}:${config.API_PORT}`);
 } catch (err) {
   app.log.error(err);
   process.exit(1);

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { z } from 'zod';
 
 const envSchema = z.object({
+  APP_NAME: z.string().default('CMGYM'),
   API_HOST: z.string().default('0.0.0.0'),
   API_PORT: z.coerce.number().default(3001),
   DATABASE_URL: z.string(),
@@ -11,8 +12,7 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().optional(),
   SUPABASE_ANON_KEY: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
-  EXERCISEDB_API_KEY: z.string().optional(),
-  EXERCISEDB_API_HOST: z.string().default('exercisedb.p.rapidapi.com'),
+  EXERCISEDB_BASE_URL: z.string().default('https://oss.exercisedb.dev/api/v1'),
   EXERCISEDB_CACHE_TTL_DAYS: z.coerce.number().default(30),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
 });

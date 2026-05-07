@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { query } from '../db/index.js';
 import { authenticate } from '../middleware/auth.js';
-import { generateCustomSession } from '@fitflow/core';
+import { generateCustomSession, type PoolExercise } from '@cmgym/core';
 
 const generateSchema = z.object({
   selected_families: z.array(z.enum(['F1','F2','F3','F4','F5','F6'])).min(1),
@@ -39,7 +39,7 @@ export async function customSessionRoutes(app: FastifyInstance) {
       durationMin: body.duration_min,
       cardioMin: body.cardio_min,
       restBetweenSetsS: settings.rows[0]?.rest_between_sets_s ?? 90,
-      exercisePools: pools.rows,
+      exercisePools: pools.rows as unknown as PoolExercise[],
     });
 
     const result = await query(
