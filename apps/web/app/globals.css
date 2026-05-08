@@ -4,9 +4,207 @@
   box-sizing: border-box;
 }
 
+/* ============================================
+   Default palette (the original CMGYM colors)
+   ============================================ */
+:root,
+[data-palette="default"] {
+  --bg-body: #0d0d1a;
+  --bg-card: #1A1A2E;
+  --bg-input: #0d0d1a;
+  --border: #2D2D44;
+  --text-primary: #ffffff;
+  --text-secondary: #9B9BB0;
+  --text-muted: #6B6B8A;
+  --accent: #5B4FE8;
+  --accent-hover: #4A3FD0;
+  --accent-secondary: #4FE8A8;
+  --warning: #F97316;
+  --nav-bg: #0d0d1a;
+  --nav-active-bg: #1A1A2E;
+}
+
+/* ============================================
+   Neon Dream
+   ============================================ */
+[data-palette="neon-dream"] {
+  --bg-body: #1C1C1E;
+  --bg-card: #2A2A2D;
+  --bg-input: #1C1C1E;
+  --border: #3D3D42;
+  --text-primary: #ffffff;
+  --text-secondary: #C2A6A6;
+  --text-muted: #8C7272;
+  --accent: #FF3B61;
+  --accent-hover: #E0304F;
+  --accent-secondary: #FFD24A;
+  --warning: #FF8A00;
+  --nav-bg: #1C1C1E;
+  --nav-active-bg: #2A2A2D;
+}
+
+/* ============================================
+   Electric Maximum
+   ============================================ */
+[data-palette="electric-maximum"] {
+  --bg-body: #0B0F14;
+  --bg-card: #151B24;
+  --bg-input: #0B0F14;
+  --border: #1F2A38;
+  --text-primary: #ffffff;
+  --text-secondary: #A0B4C8;
+  --text-muted: #5E7A92;
+  --accent: #00A8FF;
+  --accent-hover: #0090DD;
+  --accent-secondary: #FF6B6B;
+  --warning: #FFA94D;
+  --nav-bg: #0B0F14;
+  --nav-active-bg: #151B24;
+}
+
+/* ============================================
+   Cyber Mint
+   ============================================ */
+[data-palette="cyber-mint"] {
+  --bg-body: #071029;
+  --bg-card: #0E1A3A;
+  --bg-input: #071029;
+  --border: #1A2E54;
+  --text-primary: #ffffff;
+  --text-secondary: #8AA8D0;
+  --text-muted: #4A6A8E;
+  --accent: #00E5A8;
+  --accent-hover: #00C490;
+  --accent-secondary: #7C5CFF;
+  --warning: #00C2FF;
+  --nav-bg: #071029;
+  --nav-active-bg: #0E1A3A;
+}
+
+/* ============================================
+   Solar Pop
+   ============================================ */
+[data-palette="solar-pop"] {
+  --bg-body: #101214;
+  --bg-card: #1A1D20;
+  --bg-input: #101214;
+  --border: #2A2E34;
+  --text-primary: #ffffff;
+  --text-secondary: #B0A898;
+  --text-muted: #706860;
+  --accent: #FFB547;
+  --accent-hover: #E8A03A;
+  --accent-secondary: #FF3EC1;
+  --warning: #00D1FF;
+  --nav-bg: #101214;
+  --nav-active-bg: #1A1D20;
+}
+
+/* ============================================
+   Hyper-Drive
+   ============================================ */
+[data-palette="hyper-drive"] {
+  --bg-body: #121212;
+  --bg-card: #1E1E1E;
+  --bg-input: #121212;
+  --border: #2E2E2E;
+  --text-primary: #ffffff;
+  --text-secondary: #B0B0C0;
+  --text-muted: #707088;
+  --accent: #00F2FF;
+  --accent-hover: #00D0DD;
+  --accent-secondary: #FF00FF;
+  --warning: #FF00FF;
+  --nav-bg: #121212;
+  --nav-active-bg: #1E1E1E;
+}
+
+/* ============================================
+   Acid Punch
+   ============================================ */
+[data-palette="acid-punch"] {
+  --bg-body: #FAFAFA;
+  --bg-card: #FFFFFF;
+  --bg-input: #F0F0F0;
+  --border: #E0E0E0;
+  --text-primary: #1A1A1A;
+  --text-secondary: #555566;
+  --text-muted: #888899;
+  --accent: #6200EE;
+  --accent-hover: #5000CC;
+  --accent-secondary: #CCFF00;
+  --warning: #FF6B00;
+  --nav-bg: #FFFFFF;
+  --nav-active-bg: #F0F0F0;
+}
+
+/* ============================================
+   Solar Flare
+   ============================================ */
+[data-palette="solar-flare"] {
+  --bg-body: #004D40;
+  --bg-card: #00695C;
+  --bg-input: #004D40;
+  --border: #00796B;
+  --text-primary: #ffffff;
+  --text-secondary: #B2DFDB;
+  --text-muted: #80CBC4;
+  --accent: #FF4500;
+  --accent-hover: #E03D00;
+  --accent-secondary: #FFD700;
+  --warning: #FFD700;
+  --nav-bg: #004D40;
+  --nav-active-bg: #00695C;
+}
+
+/* ============================================
+   Radical Sport
+   ============================================ */
+[data-palette="radical-sport"] {
+  --bg-body: #F4F7FE;
+  --bg-card: #FFFFFF;
+  --bg-input: #EDF0F8;
+  --border: #D8DDE8;
+  --text-primary: #1A1A2E;
+  --text-secondary: #4A4A6A;
+  --text-muted: #8888AA;
+  --accent: #2E5BFF;
+  --accent-hover: #2248CC;
+  --accent-secondary: #FF3D00;
+  --warning: #FF3D00;
+  --nav-bg: #FFFFFF;
+  --nav-active-bg: #EDF0F8;
+}
+
+/* ============================================
+   Global styles using CSS variables
+   ============================================ */
 html,
 body {
-  background-color: #0d0d1a;
-  color: #fff;
+  background-color: var(--bg-body);
+  color: var(--text-primary);
   font-family: Inter, system-ui, sans-serif;
+}
+
+::selection {
+  background-color: var(--accent);
+  color: #fff;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent) !important;
+}
+
+/* Scrollbar styling for dark themes */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-body);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
 }

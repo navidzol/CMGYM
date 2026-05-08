@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { query } from '../db/index.js';
 import { authenticate } from '../middleware/auth.js';
-import { generateCustomSession, type PoolExercise } from '@cmgym/core';
+import { generateCustomSession, type PoolExercise, type Injury } from '@cmgym/core';
 
 const generateSchema = z.object({
   selected_families: z.array(z.enum(['F1','F2','F3','F4','F5','F6'])).min(1),
@@ -20,10 +20,11 @@ export async function customSessionRoutes(app: FastifyInstance) {
 
     // Fetch exercise pools for selected families
     const pools = await query(
-      `SELECT ep.*, e.avg_duration_s, e.name, e.type, mf.code as family_code
+      `SELECT ep.*, e.avg_duration_s, e.name, e.type, e.equipment, e.body_part, e.target_muscle,
+              mf.code as family_code
        FROM exercise_pools ep
        JOIN exercises e ON ep.exercise_id = e.id
-       LEFT JOIN muscle_families mf ON ep.muscle_family_id = mf.id
+       LEFT JOIN muscle_families mf ON COALESCE(ep.muscle_family_id, e.muscle_family_id) = mf.id
        WHERE ep.owner_type = 'user' AND ep.owner_id = $1
          AND (mf.code = ANY($2) OR e.type = 'cardio')`,
       [request.userId, body.selected_families]
@@ -34,12 +35,32 @@ export async function customSessionRoutes(app: FastifyInstance) {
       [request.userId]
     );
 
+    // Fetch user equipment
+    const equipResult = await query(
+      'SELECT equipment_name FROM user_equipment WHERE user_id = $1',
+      [request.userId]
+    );
+    const userEquipment = equipResult.rows.length > 0
+      ? equipResult.rows.map((r: any) => r.equipment_name)
+      : undefined;
+
+    // Fetch user injuries
+    const injuryResult = await query(
+      'SELECT body_region, mode FROM user_injuries WHERE user_id = $1',
+      [request.userId]
+    );
+    const injuries: Injury[] | undefined = injuryResult.rows.length > 0
+      ? injuryResult.rows as Injury[]
+      : undefined;
+
     const schedule = generateCustomSession({
       selectedFamilies: body.selected_families,
       durationMin: body.duration_min,
       cardioMin: body.cardio_min,
       restBetweenSetsS: settings.rows[0]?.rest_between_sets_s ?? 90,
       exercisePools: pools.rows as unknown as PoolExercise[],
+      userEquipment,
+      injuries,
     });
 
     const result = await query(

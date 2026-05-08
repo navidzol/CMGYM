@@ -7,6 +7,10 @@ const updateUserSchema = z.object({
   display_name: z.string().min(1).max(100).optional(),
   avatar_url: z.string().url().optional(),
   unit_pref: z.enum(['kg', 'lb']).optional(),
+  gender: z.enum(['male', 'female', 'other']).nullable().optional(),
+  date_of_birth: z.string().optional(),
+  weight_kg: z.number().min(10).max(500).nullable().optional(),
+  height_cm: z.number().min(50).max(300).nullable().optional(),
 }).strict();
 
 const updateSettingsSchema = z.object({
@@ -20,6 +24,7 @@ const updateSettingsSchema = z.object({
   weight_unit: z.enum(['kg', 'lb']).optional(),
   distance_unit: z.enum(['km', 'mi']).optional(),
   theme: z.enum(['dark', 'light', 'system']).optional(),
+  color_palette: z.string().max(50).optional(),
 }).strict();
 
 export async function userRoutes(app: FastifyInstance) {
@@ -28,7 +33,7 @@ export async function userRoutes(app: FastifyInstance) {
   // GET /users/me
   app.get('/me', async (request) => {
     const result = await query(
-      'SELECT id, email, display_name, avatar_url, unit_pref, created_at FROM users WHERE id = $1',
+      'SELECT id, email, display_name, avatar_url, unit_pref, gender, date_of_birth, weight_kg, height_cm, created_at FROM users WHERE id = $1',
       [request.userId]
     );
     return { data: result.rows[0] };
@@ -44,7 +49,7 @@ export async function userRoutes(app: FastifyInstance) {
     if (values.length === 0) return { data: null };
 
     const result = await query(
-      `UPDATE users SET ${sets} WHERE id = $1 RETURNING id, email, display_name, avatar_url, unit_pref`,
+      `UPDATE users SET ${sets} WHERE id = $1 RETURNING id, email, display_name, avatar_url, unit_pref, gender, date_of_birth, weight_kg, height_cm`,
       [request.userId, ...values]
     );
     return { data: result.rows[0] };
@@ -52,7 +57,21 @@ export async function userRoutes(app: FastifyInstance) {
 
   // DELETE /users/me
   app.delete('/me', async (request, reply) => {
-    await query('DELETE FROM users WHERE id = $1', [request.userId]);
+    const uid = request.userId;
+    await query('DELETE FROM family_ledger WHERE user_id = $1', [uid]);
+    await query('DELETE FROM personal_records WHERE user_id = $1', [uid]);
+    await query('DELETE FROM session_sets WHERE workout_session_id IN (SELECT id FROM workout_sessions WHERE user_id = $1)', [uid]);
+    await query('DELETE FROM workout_sessions WHERE user_id = $1', [uid]);
+    await query('DELETE FROM exercise_pools WHERE owner_type = $1 AND owner_id = $2', ['user', uid]);
+    await query('DELETE FROM exercise_notes WHERE user_id = $1', [uid]);
+    await query('DELETE FROM custom_sessions WHERE user_id = $1', [uid]);
+    await query('DELETE FROM user_settings WHERE user_id = $1', [uid]);
+    await query('DELETE FROM user_equipment WHERE user_id = $1', [uid]);
+    await query('DELETE FROM user_injuries WHERE user_id = $1', [uid]);
+    await query('DELETE FROM family_members WHERE user_id = $1', [uid]);
+    await query('DELETE FROM families WHERE created_by = $1', [uid]);
+    await query('DELETE FROM generated_programmes WHERE owner_type = $1 AND owner_id = $2', ['user', uid]);
+    await query('DELETE FROM users WHERE id = $1', [uid]);
     return reply.status(204).send();
   });
 
@@ -76,5 +95,86 @@ export async function userRoutes(app: FastifyInstance) {
       [request.userId, ...values]
     );
     return { data: result.rows[0] };
+  });
+
+  // === Equipment Routes ===
+
+  // GET /users/me/equipment
+  app.get('/me/equipment', async (request) => {
+    const result = await query(
+      'SELECT * FROM user_equipment WHERE user_id = $1 ORDER BY equipment_name',
+      [request.userId]
+    );
+    return { data: result.rows };
+  });
+
+  // PUT /users/me/equipment — replace entire equipment list
+  app.put('/me/equipment', async (request) => {
+    const body = z.object({
+      equipment: z.array(z.string().min(1).max(100)),
+    }).parse(request.body);
+
+    await query('DELETE FROM user_equipment WHERE user_id = $1', [request.userId]);
+
+    for (const name of body.equipment) {
+      await query(
+        'INSERT INTO user_equipment (user_id, equipment_name) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [request.userId, name]
+      );
+    }
+
+    const result = await query(
+      'SELECT * FROM user_equipment WHERE user_id = $1 ORDER BY equipment_name',
+      [request.userId]
+    );
+    return { data: result.rows };
+  });
+
+  // === Injury Routes ===
+
+  // GET /users/me/injuries
+  app.get('/me/injuries', async (request) => {
+    const result = await query(
+      'SELECT * FROM user_injuries WHERE user_id = $1 ORDER BY body_region',
+      [request.userId]
+    );
+    return { data: result.rows };
+  });
+
+  // POST /users/me/injuries
+  app.post('/me/injuries', async (request, reply) => {
+    const body = z.object({
+      body_region: z.string().min(1).max(50),
+      mode: z.enum(['avoid', 'warn']).default('warn'),
+    }).parse(request.body);
+
+    const result = await query(
+      `INSERT INTO user_injuries (user_id, body_region, mode)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, body_region) DO UPDATE SET mode = EXCLUDED.mode
+       RETURNING *`,
+      [request.userId, body.body_region, body.mode]
+    );
+    return reply.status(201).send({ data: result.rows[0] });
+  });
+
+  // DELETE /users/me/injuries/:id
+  app.delete('/me/injuries/:injuryId', async (request, reply) => {
+    const { injuryId } = request.params as { injuryId: string };
+    await query(
+      'DELETE FROM user_injuries WHERE id = $1 AND user_id = $2',
+      [injuryId, request.userId]
+    );
+    return reply.status(204).send();
+  });
+
+  // DELETE /users/me/injuries/region/:region — delete by body region name
+  app.delete('/me/injuries/region/:region', async (request, reply) => {
+    const { region } = request.params as { region: string };
+    await query(
+      'DELETE FROM user_injuries WHERE body_region = $1 AND user_id = $2',
+      [region, request.userId]
+    );
+    return reply.status(204).send();
   });
 }

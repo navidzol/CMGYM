@@ -8,6 +8,7 @@ const searchSchema = z.object({
   query: z.string().optional(),
   family: z.string().optional(),
   type: z.enum(['strength', 'cardio', 'mobility']).optional(),
+  equipment: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
@@ -35,18 +36,23 @@ export async function exerciseRoutes(app: FastifyInstance) {
     let idx = 1;
 
     if (params.query) {
-      conditions.push(`name ILIKE $${idx}`);
+      conditions.push(`e.name ILIKE $${idx}`);
       values.push(`%${params.query}%`);
       idx++;
     }
     if (params.family) {
-      conditions.push(`muscle_family_id = (SELECT id FROM muscle_families WHERE code = $${idx})`);
+      conditions.push(`e.muscle_family_id = (SELECT id FROM muscle_families WHERE code = $${idx})`);
       values.push(params.family);
       idx++;
     }
     if (params.type) {
-      conditions.push(`type = $${idx}`);
+      conditions.push(`e.type = $${idx}`);
       values.push(params.type);
+      idx++;
+    }
+    if (params.equipment) {
+      conditions.push(`e.equipment = $${idx}`);
+      values.push(params.equipment);
       idx++;
     }
 
@@ -62,7 +68,7 @@ export async function exerciseRoutes(app: FastifyInstance) {
     );
 
     const countResult = await query(
-      `SELECT COUNT(*) as total FROM exercises ${where}`,
+      `SELECT COUNT(*) as total FROM exercises e ${where}`,
       values
     );
 
@@ -70,6 +76,14 @@ export async function exerciseRoutes(app: FastifyInstance) {
       data: result.rows,
       meta: { page: params.page, total: parseInt(countResult.rows[0].total) },
     };
+  });
+
+  // GET /exercises/equipment-list — get all distinct equipment types
+  app.get('/equipment-list', async () => {
+    const result = await query(
+      `SELECT DISTINCT equipment FROM exercises WHERE equipment IS NOT NULL AND equipment != '' ORDER BY equipment`
+    );
+    return { data: result.rows.map((r: any) => r.equipment) };
   });
 
   // GET /exercises/:id
@@ -89,7 +103,6 @@ export async function exerciseRoutes(app: FastifyInstance) {
   });
 
   // POST /exercises/fetch-external — fetch from ExerciseDB (AscendAPI) and cache
-  // No API key needed. Free tier at https://oss.exercisedb.dev/api/v1
   app.post('/fetch-external', async (request, reply) => {
     const body = z.object({
       name: z.string().optional(),
@@ -109,7 +122,6 @@ export async function exerciseRoutes(app: FastifyInstance) {
       }
     }
 
-    // Build ExerciseDB request URL
     const params = new URLSearchParams();
     if (body.name) params.set('name', body.name);
     if (body.muscle) params.set('targetMuscles', body.muscle);
@@ -123,13 +135,10 @@ export async function exerciseRoutes(app: FastifyInstance) {
       return reply.status(502).send({ error: `ExerciseDB request failed: ${res.status}` });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const json: any = await res.json();
     const exercises: any[] = json.data || [];
 
-    // Cache results in our DB
     for (const ex of exercises) {
-      // Try to match to our muscle family based on targetMuscles
       let familyCode: string | null = null;
       for (const [code, muscles] of Object.entries(FAMILY_TO_MUSCLES)) {
         if (ex.targetMuscles?.some((m: string) => muscles.includes(m.toLowerCase()))) {
@@ -143,12 +152,15 @@ export async function exerciseRoutes(app: FastifyInstance) {
         : null;
 
       await query(
-        `INSERT INTO exercises (name, external_id, muscle_family_id, gif_url, instructions_json, type, cached_at)
-         VALUES ($1, $2, $3, $4, $5, 'strength', now())
+        `INSERT INTO exercises (name, external_id, muscle_family_id, gif_url, instructions_json, type, equipment, body_part, target_muscle, cached_at)
+         VALUES ($1, $2, $3, $4, $5, 'strength', $6, $7, $8, now())
          ON CONFLICT (external_id) DO UPDATE SET
            name = EXCLUDED.name,
            gif_url = EXCLUDED.gif_url,
            instructions_json = EXCLUDED.instructions_json,
+           equipment = EXCLUDED.equipment,
+           body_part = EXCLUDED.body_part,
+           target_muscle = EXCLUDED.target_muscle,
            cached_at = now()`,
         [
           ex.name,
@@ -156,6 +168,9 @@ export async function exerciseRoutes(app: FastifyInstance) {
           familyId,
           ex.gifUrl,
           JSON.stringify(ex.instructions || []),
+          ex.equipment || null,
+          ex.bodyPart || null,
+          ex.target || null,
         ]
       );
     }
@@ -164,7 +179,6 @@ export async function exerciseRoutes(app: FastifyInstance) {
   });
 
   // POST /exercises/seed — bulk-fetch all exercises from ExerciseDB by muscle group
-  // Useful for initial DB population. Fetches all families.
   app.post('/seed', async (request, reply) => {
     const allMuscles = [...new Set(Object.values(FAMILY_TO_MUSCLES).flat())];
     let totalCached = 0;
@@ -174,11 +188,9 @@ export async function exerciseRoutes(app: FastifyInstance) {
       const res = await fetch(`${config.EXERCISEDB_BASE_URL}/exercises?${params.toString()}`);
       if (!res.ok) continue;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const json: any = await res.json();
       const exercises: any[] = json.data || [];
 
-      // Find which family this muscle belongs to
       let familyCode: string | null = null;
       for (const [code, muscles] of Object.entries(FAMILY_TO_MUSCLES)) {
         if (muscles.includes(muscle)) {
@@ -193,13 +205,25 @@ export async function exerciseRoutes(app: FastifyInstance) {
 
       for (const ex of exercises) {
         await query(
-          `INSERT INTO exercises (name, external_id, muscle_family_id, gif_url, instructions_json, type, cached_at)
-           VALUES ($1, $2, $3, $4, $5, 'strength', now())
+          `INSERT INTO exercises (name, external_id, muscle_family_id, gif_url, instructions_json, type, equipment, body_part, target_muscle, cached_at)
+           VALUES ($1, $2, $3, $4, $5, 'strength', $6, $7, $8, now())
            ON CONFLICT (external_id) DO UPDATE SET
              name = EXCLUDED.name,
              gif_url = EXCLUDED.gif_url,
+             equipment = EXCLUDED.equipment,
+             body_part = EXCLUDED.body_part,
+             target_muscle = EXCLUDED.target_muscle,
              cached_at = now()`,
-          [ex.name, ex.exerciseId, familyId, ex.gifUrl, JSON.stringify(ex.instructions || [])]
+          [
+            ex.name,
+            ex.exerciseId,
+            familyId,
+            ex.gifUrl,
+            JSON.stringify(ex.instructions || []),
+            ex.equipment || null,
+            ex.bodyPart || null,
+            ex.target || null,
+          ]
         );
         totalCached++;
       }

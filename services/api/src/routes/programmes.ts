@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { query } from '../db/index.js';
 import { authenticate } from '../middleware/auth.js';
-import { generateWeekSchedule, type PoolExercise } from '@cmgym/core';
+import { generateWeekSchedule, type PoolExercise, type Injury } from '@cmgym/core';
 
 const createProgrammeSchema = z.object({
   weeks: z.number().int().min(1).max(52).default(1),
@@ -71,10 +71,11 @@ export async function programmeRoutes(app: FastifyInstance) {
 
     // Fetch user's exercise pools
     const pools = await query(
-      `SELECT ep.*, e.avg_duration_s, e.name, e.type, mf.code as family_code
+      `SELECT ep.*, e.avg_duration_s, e.name, e.type, e.equipment, e.body_part, e.target_muscle,
+              mf.code as family_code
        FROM exercise_pools ep
        JOIN exercises e ON ep.exercise_id = e.id
-       LEFT JOIN muscle_families mf ON ep.muscle_family_id = mf.id
+       LEFT JOIN muscle_families mf ON COALESCE(ep.muscle_family_id, e.muscle_family_id) = mf.id
        WHERE ep.owner_type = 'user' AND ep.owner_id = $1`,
       [request.userId]
     );
@@ -85,18 +86,38 @@ export async function programmeRoutes(app: FastifyInstance) {
       [request.userId]
     );
 
+    // Fetch user equipment
+    const equipResult = await query(
+      'SELECT equipment_name FROM user_equipment WHERE user_id = $1',
+      [request.userId]
+    );
+    const userEquipment = equipResult.rows.length > 0
+      ? equipResult.rows.map((r: any) => r.equipment_name)
+      : undefined;
+
+    // Fetch user injuries
+    const injuryResult = await query(
+      'SELECT body_region, mode FROM user_injuries WHERE user_id = $1',
+      [request.userId]
+    );
+    const injuries: Injury[] | undefined = injuryResult.rows.length > 0
+      ? injuryResult.rows as Injury[]
+      : undefined;
+
     const schedule = generateWeekSchedule({
       sessionsPerWeek: programme.sessions_per_week,
       sessionDurationMin: programme.session_duration_min,
       cardioDurationMin: programme.cardio_duration_min,
       restBetweenSetsS: settings.rows[0]?.rest_between_sets_s ?? 90,
       exercisePools: pools.rows as unknown as PoolExercise[],
+      userEquipment,
+      injuries,
     });
 
     // Insert generated sessions
     const today = new Date();
     const monday = new Date(today);
-    monday.setDate(today.getDate() - today.getDay() + 1); // next Monday
+    monday.setDate(today.getDate() - today.getDay() + 1);
 
     for (let day = 0; day < schedule.length; day++) {
       const sessionDate = new Date(monday);

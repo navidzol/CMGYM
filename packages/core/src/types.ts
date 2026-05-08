@@ -20,11 +20,25 @@ export interface Exercise {
   instructions_json: string[];
   avg_duration_s: number;
   type: ExerciseType;
+  equipment?: string;
+  body_part?: string;
+  target_muscle?: string;
 }
 
 export interface PoolExercise extends Exercise {
   family_code: MuscleFamily | null;
   sort_order: number;
+}
+
+export interface Injury {
+  body_region: string;
+  mode: 'avoid' | 'warn';
+}
+
+export interface ScheduleWarning {
+  exercise_id: string;
+  exercise_name: string;
+  reason: string;
 }
 
 export interface ScheduleExercise {
@@ -36,6 +50,7 @@ export interface ScheduleExercise {
   reps: number;
   rest_s: number;
   estimated_duration_s: number;
+  injury_warning?: string;
 }
 
 export interface SessionSchedule {
@@ -43,6 +58,7 @@ export interface SessionSchedule {
   exercises: ScheduleExercise[];
   cardio: ScheduleExercise | null;
   total_estimated_min: number;
+  warnings?: ScheduleWarning[];
 }
 
 export interface UserSettings {
@@ -64,6 +80,8 @@ export interface GenerateWeekInput {
   cardioDurationMin: number;
   restBetweenSetsS: number;
   exercisePools: PoolExercise[];
+  userEquipment?: string[];
+  injuries?: Injury[];
 }
 
 export interface GenerateCustomInput {
@@ -72,4 +90,6 @@ export interface GenerateCustomInput {
   cardioMin: number;
   restBetweenSetsS: number;
   exercisePools: PoolExercise[];
+  userEquipment?: string[];
+  injuries?: Injury[];
 }

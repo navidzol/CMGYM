@@ -3,6 +3,8 @@ import type {
   PoolExercise,
   SessionSchedule,
   ScheduleExercise,
+  ScheduleWarning,
+  Injury,
   GenerateWeekInput,
   GenerateCustomInput,
 } from './types.js';
@@ -17,9 +19,20 @@ import {
 
 const ALL_FAMILIES: MuscleFamily[] = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6'];
 
-/**
- * Shuffle array in place (Fisher-Yates).
- */
+// Map body_part values from ExerciseDB to readable regions for injury matching
+const BODY_PART_ALIASES: Record<string, string[]> = {
+  chest: ['chest'],
+  back: ['back'],
+  shoulders: ['shoulders'],
+  'upper arms': ['upper arms'],
+  'lower arms': ['lower arms', 'forearms'],
+  'upper legs': ['upper legs', 'thighs'],
+  'lower legs': ['lower legs', 'calves'],
+  waist: ['waist', 'core', 'abs'],
+  neck: ['neck'],
+  cardio: ['cardio'],
+};
+
 function shuffle<T>(arr: T[]): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -28,10 +41,6 @@ function shuffle<T>(arr: T[]): T[] {
   return arr;
 }
 
-/**
- * SOP Section 6.2: Family Distribution Per Day
- * Across T sessions, every one of the 6 families appears at least once.
- */
 function distributeFamilies(sessionsPerWeek: number): MuscleFamily[][] {
   const familiesPerSession = Math.ceil(FAMILY_COUNT / sessionsPerWeek);
   const rotated = [...ALL_FAMILIES];
@@ -53,34 +62,66 @@ function distributeFamilies(sessionsPerWeek: number): MuscleFamily[][] {
 }
 
 /**
- * SOP Section 6.3: Time-Filling Algorithm
- * Fill a time budget for a given family from the exercise pool.
+ * Filter pools by user equipment. If no equipment list provided, return all.
  */
+function filterByEquipment(pools: PoolExercise[], userEquipment?: string[]): PoolExercise[] {
+  if (!userEquipment || userEquipment.length === 0) return pools;
+  const equipSet = new Set(userEquipment.map(e => e.toLowerCase()));
+  // Always include body weight exercises
+  equipSet.add('body weight');
+  return pools.filter(p => !p.equipment || equipSet.has(p.equipment.toLowerCase()));
+}
+
+/**
+ * Check if an exercise targets an injured body region.
+ */
+function checkInjury(exercise: PoolExercise, injuries: Injury[]): Injury | null {
+  if (!injuries || injuries.length === 0) return null;
+  for (const injury of injuries) {
+    const region = injury.body_region.toLowerCase();
+    // Check body_part match
+    if (exercise.body_part && exercise.body_part.toLowerCase() === region) return injury;
+    // Check aliases
+    for (const [part, aliases] of Object.entries(BODY_PART_ALIASES)) {
+      if (aliases.includes(region) && exercise.body_part?.toLowerCase() === part) return injury;
+    }
+    // Check target_muscle contains the region name
+    if (exercise.target_muscle && exercise.target_muscle.toLowerCase().includes(region)) return injury;
+  }
+  return null;
+}
+
 function fillTimeForFamily(
   familyCode: MuscleFamily,
   budgetMin: number,
   pools: PoolExercise[],
   restS: number,
-): ScheduleExercise[] {
+  injuries?: Injury[],
+): { exercises: ScheduleExercise[]; warnings: ScheduleWarning[] } {
   const familyPool = pools.filter(
     (p) => p.family_code === familyCode && p.type === 'strength'
   );
 
-  if (familyPool.length === 0) return [];
+  if (familyPool.length === 0) return { exercises: [], warnings: [] };
 
   const budgetS = budgetMin * 60;
   const exercises: ScheduleExercise[] = [];
+  const warnings: ScheduleWarning[] = [];
   let timeUsedS = 0;
 
   const available = shuffle([...familyPool]);
 
   for (const ex of available) {
+    // Check injury
+    const injury = injuries ? checkInjury(ex, injuries) : null;
+    if (injury?.mode === 'avoid') continue; // Skip avoided exercises
+
     const sets = DEFAULT_SETS;
     const avgSetDuration = ex.avg_duration_s || DEFAULT_AVG_SET_DURATION_S;
     const timeNeeded = sets * (avgSetDuration + restS);
 
     if (timeUsedS + timeNeeded <= budgetS) {
-      exercises.push({
+      const schedEx: ScheduleExercise = {
         exercise_id: ex.id,
         exercise_name: ex.name,
         family_code: familyCode,
@@ -89,11 +130,19 @@ function fillTimeForFamily(
         reps: DEFAULT_REPS,
         rest_s: restS,
         estimated_duration_s: timeNeeded,
-      });
+      };
+      if (injury?.mode === 'warn') {
+        schedEx.injury_warning = `Targets injured region: ${injury.body_region}`;
+        warnings.push({
+          exercise_id: ex.id,
+          exercise_name: ex.name,
+          reason: `Targets injured region: ${injury.body_region}`,
+        });
+      }
+      exercises.push(schedEx);
       timeUsedS += timeNeeded;
     } else if (timeUsedS + timeNeeded <= budgetS * (1 + OVERFLOW_TOLERANCE)) {
-      // Within 20% overflow tolerance — include and flag
-      exercises.push({
+      const schedEx: ScheduleExercise = {
         exercise_id: ex.id,
         exercise_name: ex.name,
         family_code: familyCode,
@@ -102,20 +151,26 @@ function fillTimeForFamily(
         reps: DEFAULT_REPS,
         rest_s: restS,
         estimated_duration_s: timeNeeded,
-      });
+      };
+      if (injury?.mode === 'warn') {
+        schedEx.injury_warning = `Targets injured region: ${injury.body_region}`;
+        warnings.push({
+          exercise_id: ex.id,
+          exercise_name: ex.name,
+          reason: `Targets injured region: ${injury.body_region}`,
+        });
+      }
+      exercises.push(schedEx);
       timeUsedS += timeNeeded;
-      break; // stop after overflow
+      break;
     } else {
-      break; // can't fit anything else
+      break;
     }
   }
 
-  return exercises;
+  return { exercises, warnings };
 }
 
-/**
- * Pick a cardio exercise closest to the target duration.
- */
 function pickCardio(
   pools: PoolExercise[],
   targetDurationMin: number,
@@ -141,10 +196,6 @@ function pickCardio(
   };
 }
 
-/**
- * SOP Section 6: Generate a full week's schedule.
- * Returns an array of SessionSchedule, one per training day.
- */
 export function generateWeekSchedule(input: GenerateWeekInput): SessionSchedule[] {
   const {
     sessionsPerWeek,
@@ -152,43 +203,48 @@ export function generateWeekSchedule(input: GenerateWeekInput): SessionSchedule[
     cardioDurationMin,
     restBetweenSetsS,
     exercisePools,
+    userEquipment,
+    injuries,
   } = input;
 
+  const filteredPools = filterByEquipment(exercisePools, userEquipment);
   const strengthBudgetMin = sessionDurationMin - cardioDurationMin;
   const familyDistribution = distributeFamilies(sessionsPerWeek);
 
   return familyDistribution.map((dayFamilies) => {
     const timePerFamily = strengthBudgetMin / dayFamilies.length;
     const exercises: ScheduleExercise[] = [];
+    const allWarnings: ScheduleWarning[] = [];
 
     for (const family of dayFamilies) {
-      const familyExercises = fillTimeForFamily(
+      const { exercises: familyExercises, warnings } = fillTimeForFamily(
         family,
         timePerFamily,
-        exercisePools,
+        filteredPools,
         restBetweenSetsS,
+        injuries,
       );
       exercises.push(...familyExercises);
+      allWarnings.push(...warnings);
     }
 
-    const cardio = pickCardio(exercisePools, cardioDurationMin);
+    const cardio = pickCardio(filteredPools, cardioDurationMin);
 
     const totalEstimatedS =
       exercises.reduce((sum, e) => sum + e.estimated_duration_s, 0) +
       (cardio?.estimated_duration_s ?? 0);
 
-    return {
+    const schedule: SessionSchedule = {
       families: dayFamilies,
       exercises,
       cardio,
       total_estimated_min: Math.round(totalEstimatedS / 60),
     };
+    if (allWarnings.length > 0) schedule.warnings = allWarnings;
+    return schedule;
   });
 }
 
-/**
- * SOP Section 7: Generate a custom session.
- */
 export function generateCustomSession(input: GenerateCustomInput): SessionSchedule {
   const {
     selectedFamilies,
@@ -196,41 +252,49 @@ export function generateCustomSession(input: GenerateCustomInput): SessionSchedu
     cardioMin,
     restBetweenSetsS,
     exercisePools,
+    userEquipment,
+    injuries,
   } = input;
 
+  const filteredPools = filterByEquipment(exercisePools, userEquipment);
   const strengthBudget = durationMin - cardioMin;
   const timePerFamily = strengthBudget / selectedFamilies.length;
   const exercises: ScheduleExercise[] = [];
+  const allWarnings: ScheduleWarning[] = [];
 
   for (const family of selectedFamilies) {
-    const familyExercises = fillTimeForFamily(
+    const { exercises: familyExercises, warnings } = fillTimeForFamily(
       family,
       timePerFamily,
-      exercisePools,
+      filteredPools,
       restBetweenSetsS,
+      injuries,
     );
     exercises.push(...familyExercises);
+    allWarnings.push(...warnings);
   }
 
-  // Redistribute remaining time if a family couldn't fill its budget
+  // Redistribute remaining time
   const usedTimeS = exercises.reduce((sum, e) => sum + e.estimated_duration_s, 0);
   const remainingS = strengthBudget * 60 - usedTimeS;
 
   if (remainingS > 120) {
-    // Try to add more exercises from families that have leftover pool
     for (const family of selectedFamilies) {
       const alreadyUsed = new Set(
         exercises.filter((e) => e.family_code === family).map((e) => e.exercise_id)
       );
-      const remaining = exercisePools.filter(
+      const remaining = filteredPools.filter(
         (p) => p.family_code === family && p.type === 'strength' && !alreadyUsed.has(p.id)
       );
 
       for (const ex of remaining) {
+        const injury = injuries ? checkInjury(ex, injuries) : null;
+        if (injury?.mode === 'avoid') continue;
+
         const timeNeeded = DEFAULT_SETS * ((ex.avg_duration_s || DEFAULT_AVG_SET_DURATION_S) + restBetweenSetsS);
         const currentTotal = exercises.reduce((s, e) => s + e.estimated_duration_s, 0);
         if (currentTotal + timeNeeded <= strengthBudget * 60) {
-          exercises.push({
+          const schedEx: ScheduleExercise = {
             exercise_id: ex.id,
             exercise_name: ex.name,
             family_code: family,
@@ -239,29 +303,37 @@ export function generateCustomSession(input: GenerateCustomInput): SessionSchedu
             reps: DEFAULT_REPS,
             rest_s: restBetweenSetsS,
             estimated_duration_s: timeNeeded,
-          });
+          };
+          if (injury?.mode === 'warn') {
+            schedEx.injury_warning = `Targets injured region: ${injury.body_region}`;
+            allWarnings.push({
+              exercise_id: ex.id,
+              exercise_name: ex.name,
+              reason: `Targets injured region: ${injury.body_region}`,
+            });
+          }
+          exercises.push(schedEx);
         }
       }
     }
   }
 
-  const cardio = cardioMin > 0 ? pickCardio(exercisePools, cardioMin) : null;
+  const cardio = cardioMin > 0 ? pickCardio(filteredPools, cardioMin) : null;
 
   const totalEstimatedS =
     exercises.reduce((sum, e) => sum + e.estimated_duration_s, 0) +
     (cardio?.estimated_duration_s ?? 0);
 
-  return {
+  const schedule: SessionSchedule = {
     families: selectedFamilies,
     exercises,
     cardio,
     total_estimated_min: Math.round(totalEstimatedS / 60),
   };
+  if (allWarnings.length > 0) schedule.warnings = allWarnings;
+  return schedule;
 }
 
-/**
- * SOP Section 13.3: PR Detection — Epley estimated 1RM
- */
 export function calculateEpley1RM(weightKg: number, reps: number): number {
   return weightKg * (1 + reps / 30);
 }

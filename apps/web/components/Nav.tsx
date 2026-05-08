@@ -25,11 +25,11 @@ export default function Nav() {
       alignItems: 'center',
       gap: '0.5rem',
       padding: '0.75rem 1.5rem',
-      borderBottom: '1px solid #2D2D44',
-      backgroundColor: '#0d0d1a',
+      borderBottom: '1px solid var(--border)',
+      backgroundColor: 'var(--nav-bg)',
       flexWrap: 'wrap',
     }}>
-      <a href="/dashboard" style={{ color: '#5B4FE8', fontWeight: 700, fontSize: '1.1rem', textDecoration: 'none', marginRight: '1rem' }}>
+      <a href="/dashboard" style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '1.1rem', textDecoration: 'none', marginRight: '1rem' }}>
         {APP_NAME}
       </a>
       {links.map(l => (
@@ -37,12 +37,12 @@ export default function Nav() {
           key={l.href}
           href={l.href}
           style={{
-            color: pathname.startsWith(l.href) ? '#fff' : '#6B6B8A',
+            color: pathname.startsWith(l.href) ? 'var(--text-primary)' : 'var(--text-muted)',
             textDecoration: 'none',
             fontSize: '0.875rem',
             padding: '0.375rem 0.75rem',
             borderRadius: '6px',
-            backgroundColor: pathname.startsWith(l.href) ? '#1A1A2E' : 'transparent',
+            backgroundColor: pathname.startsWith(l.href) ? 'var(--nav-active-bg)' : 'transparent',
           }}
         >
           {l.label}
@@ -53,8 +53,8 @@ export default function Nav() {
         style={{
           marginLeft: 'auto',
           background: 'none',
-          border: '1px solid #2D2D44',
-          color: '#6B6B8A',
+          border: '1px solid var(--border)',
+          color: 'var(--text-muted)',
           padding: '0.375rem 0.75rem',
           borderRadius: '6px',
           cursor: 'pointer',

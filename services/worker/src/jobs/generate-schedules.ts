@@ -23,7 +23,7 @@ export async function generateWeeklySchedules(): Promise<void> {
       `SELECT ep.*, e.avg_duration_s, e.name, e.type, mf.code as family_code
        FROM exercise_pools ep
        JOIN exercises e ON ep.exercise_id = e.id
-       LEFT JOIN muscle_families mf ON ep.muscle_family_id = mf.id
+       LEFT JOIN muscle_families mf ON COALESCE(ep.muscle_family_id, e.muscle_family_id) = mf.id
        WHERE ep.owner_type = $1 AND ep.owner_id = $2`,
       [prog.owner_type, prog.owner_id]
     );
