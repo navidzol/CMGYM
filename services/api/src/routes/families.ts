@@ -19,6 +19,19 @@ function generateInviteCode(): string {
 export async function familyRoutes(app: FastifyInstance) {
   app.addHook('onRequest', authenticate);
 
+  // GET /families — list user's families
+  app.get('/', async (request) => {
+    const result = await query(
+      `SELECT f.*, fm.role as my_role
+       FROM families f
+       JOIN family_members fm ON fm.family_id = f.id
+       WHERE fm.user_id = $1
+       ORDER BY f.created_at DESC`,
+      [request.userId]
+    );
+    return { data: result.rows };
+  });
+
   // POST /families — create
   app.post('/', async (request, reply) => {
     const body = createFamilySchema.parse(request.body);
